@@ -1,0 +1,38 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.neume'
+version = '1.0'
+
+// Modern way to set Java version and handle toolchains
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // This expects max.jar to be in a folder named 'libs' in the project root
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['.']
+            // Exclude build and IDE folders from source scanning
+            exclude 'out/**', 'build/**', '.gradle/**', 'libs/**', 'deploy.bat'
+        }
+    }
+}
+
+// Modern syntax for the jar task
+tasks.named('jar') {
+    archiveFileName = 'Mume.jar'
+    destinationDirectory = layout.buildDirectory.dir('dist')
+}
