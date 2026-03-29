@@ -6,7 +6,7 @@ Mume currently exists in two primary implementations sharing a common core:
 1. **Mume-Max**: A collection of Java-based Max/MSP (MXJ) objects.
 2. **Mume-Standalone**: A standalone Java implementation using the Beads audio library.
 
-**Note:** This package is primarily intended for use with the `zsa.freqpeak` object but will work with any Max list of frequency/amplitude pairs.
+**Note:** This package was initially developed for use in real-time performance with the `zsa.freqpeak` object but will work with any list of frequency/amplitude pairs.
 
 ## System Structure
 
