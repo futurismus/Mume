@@ -1,3 +1,5 @@
+package com.neume;
+
 import com.cycling74.max.*;
 
 /**

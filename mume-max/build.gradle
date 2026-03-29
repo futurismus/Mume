@@ -1,0 +1,12 @@
+dependencies {
+    implementation project(':mume-core')
+    // Existing MXJ dependency
+    implementation fileTree(dir: '../libs', include: ['*.jar'])
+}
+
+// Update the deploy path
+task deployToMax(type: Copy) {
+    from sourceSets.main.output
+    // This assumes you still want it in your Documents folder
+    into "C:/Users/bened/Documents/Max 8/Packages/Mume/java-classes"
+}

@@ -1,0 +1,2 @@
+rootProject.name = 'mxj-mume'
+include 'mume-core', 'mume-max', 'mume-standalone'

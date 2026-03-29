@@ -1,0 +1,26 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://jitpack.io" }
+    maven { url "https://clojars.org/repo" }
+}
+
+dependencies {
+    implementation project(':mume-core')
+    
+    // Beads Library from Clojars
+    implementation 'net.beadsproject:beads:3.2'
+    
+    // Core project libs (for Atom compatibility)
+    implementation fileTree(dir: '../libs', include: ['*.jar'])
+}
+
+// Jar packaging for standalone app
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.neume.MumeBeads'
+    }
+}

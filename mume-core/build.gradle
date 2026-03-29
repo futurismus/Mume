@@ -1,0 +1,4 @@
+dependencies {
+    // Shared core dependencies (like max.jar for Atom arrays)
+    implementation fileTree(dir: '../libs', include: ['*.jar'])
+}

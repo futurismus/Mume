@@ -1,48 +1,14 @@
+package com.neume;
+
 import com.cycling74.max.*;
 import java.util.*;
 
 /**
  * Mume: A spectral analysis and storage object for Max.
- * Analogy: A "neumonic" unit of spectral information, from the field of mumetics.
- * 
- * Max Messages:
- *  - list [freq1, amp1, freq2, amp2...]: Ingest spectral components into histogram
- *  - setMetadata [index, ID, freq, amp, weight, thresh]: Manually set metadata
- *  - bang: Output the current metadata state to Outlet 1
- *  - train: Output the full state (metadata + top 24 harmonics) to Outlet 1
- *  - dump: Output full spectral data to Outlet 0, state to Outlet 1, energy dist to Outlet 2
- *  - clear: Reset histogram and internal weight/frequency/amplitude
- *  - frequencyResolution [val]: Set binning width for frequencies (default 0.5)
- *  - ampResolution [val]: Set binning width for amplitudes (default 0.01)
- *  - auto [0/1]: Toggle automatic dumping after every list
+ * Analogy: A "neumonic" unit of spectral information.
  */
 public class Mume extends MaxObject {
-    /**
-     * Internal class to store histogram bin data
-     */
-    static class FrequencyBin {
-        float frequency;
-        int count;
-        float maxAmplitude;
-
-        FrequencyBin(float freq, float amp) {
-            this.frequency = freq;
-            this.count = 1;
-            this.maxAmplitude = amp;
-        }
-
-        void update(float amp) {
-            this.count++;
-            if (amp > this.maxAmplitude) {
-                this.maxAmplitude = amp;
-            }
-        }
-
-        float getWeight() {
-            return this.count * this.maxAmplitude;
-        }
-    }
-
+    
     // Standard metadata fields
     private int mePoint;
     private String mumeID;
@@ -51,6 +17,7 @@ public class Mume extends MaxObject {
     private float weight;
     private float activationThreshold;
 
+    // Use the shared FrequencyBin class from mume-core
     private Map<Float, FrequencyBin> histogram = new HashMap<>();
     private float frequencyResolution = 0.5f;
     private float amplitudeResolution = 0.01f;
@@ -91,7 +58,7 @@ public class Mume extends MaxObject {
                 
                 float binnedFreq = Math.round(freq / frequencyResolution) * frequencyResolution;
                 float binnedAmp = Math.round(amp / amplitudeResolution) * amplitudeResolution;
-                
+
                 histogram.compute(binnedFreq, (k, v) -> {
                     if (v == null) return new FrequencyBin(binnedFreq, binnedAmp);
                     v.update(binnedAmp);
@@ -107,9 +74,7 @@ public class Mume extends MaxObject {
 
     public void setMetadata(Atom[] args) {
         if (args == null || args.length == 0) return;
-
         MumeData incoming = new MumeData(args);
-        
         if (!this.mumeID.equals("") && !this.mumeID.equals(incoming.id)) {
             outlet(1, getMumeData(null).toFullState());
             clear();
@@ -117,9 +82,7 @@ public class Mume extends MaxObject {
         } else if (this.mumeID.equals("")) {
             this.mePoint = incoming.index;
         }
-
         this.mumeID = incoming.id;
-
         if (args.length >= 6) {
             this.frequency = incoming.frequency;
             this.amplitude = incoming.amplitude;
@@ -151,7 +114,6 @@ public class Mume extends MaxObject {
         float totalWeight = 0;
         float maxBinWeight = -1.0f;
         FrequencyBin topBin = null;
-
         for (FrequencyBin bin : histogram.values()) {
             float binWeight = bin.getWeight();
             totalWeight += binWeight;
@@ -160,7 +122,6 @@ public class Mume extends MaxObject {
                 topBin = bin;
             }
         }
-
         this.weight = totalWeight;
         if (topBin != null) {
             this.frequency = topBin.frequency;
@@ -185,14 +146,12 @@ public class Mume extends MaxObject {
 
     public void dump() {
         if (this.weight < this.activationThreshold) return;
-
         List<FrequencyBin> bins = getSortedBins();
         Atom[] output = new Atom[bins.size() * 2];
         for (int i = 0; i < bins.size(); i++) {
             output[i * 2] = Atom.newAtom(bins.get(i).frequency);
             output[i * 2 + 1] = Atom.newAtom(bins.get(i).maxAmplitude);
         }
-
         outlet(0, output);
         outlet(1, getMumeData(output).toFullState());
         outputEnergyDistribution(bins);
