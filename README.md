@@ -1,4 +1,4 @@
-# Mume Spectral System
+# mxj Mume
 
 A collection of Java-based Max/MSP (MXJ) objects for spectral analysis, storage, and classification. The system is designed around the concept of a "Mume"—a discrete unit of spectral information, analogous to a memetic unit.
 
