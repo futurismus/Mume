@@ -1,6 +1,6 @@
 # Mume
 
-A cross-platform spectral analysis, storage, and classification ecosystem. The system is designed around the concept of a "Mume"—a discrete unit of spectral information, analogous to a memetic unit. 
+A cross-platform spectral analysis, storage, and classification ecosystem. The system is designed around the concept of a "Mume"—a discrete unit of spectral information, analogous to a memetic unit. The overa;; aim is to emphasise a "human in the loop" style paradigm to ML and future developments in MI, visualisation and sonification in implied through the design language. Leveraging the beads library and a portable Java solution should leave the project open to rapid prototyping of musical performance systems, and likewise the MXJ Java and Max implementation should be useful in the context of notation generation i.e. using MaxScore, and allow for easy integration into max4live.
 
 Mume currently exists in two primary implementations sharing a common core:
 1. **Mume-Max**: A collection of Java-based Max/MSP (MXJ) objects.
