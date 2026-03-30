@@ -32,23 +32,19 @@ public class MumeAnalyzer extends UGen {
         super(ac, 1, 0); 
         this.numPeaks = numPeaks;
         
-        // 1. Initialize the analysis chain
         this.fft = new FFT();
         this.ps = new PowerSpectrum();
         this.peaks = new SpectralPeaks(ac, numPeaks);
         
-        // Link the chain
         this.fft.addListener(ps);
         this.ps.addListener(peaks);
     }
 
     @Override
     public void calculateBuffer() {
-        // Use the context's built-in TimeStamp generator
         TimeStamp ts = context.generateTimeStamp(0);
         fft.process(ts, ts, bufIn[0]);
         
-        // Retrieve the identified peaks
         float[][] peakData = (float[][]) peaks.getFeatures();
         if (peakData != null) {
             processPeaks(peakData);
@@ -70,6 +66,10 @@ public class MumeAnalyzer extends UGen {
                 return v;
             });
         }
+    }
+
+    public List<FrequencyBin> getAllBins() {
+        return new ArrayList<>(histogram.values());
     }
 
     public MumeData getMume(int index, String id, float threshold) {
@@ -99,7 +99,6 @@ public class MumeAnalyzer extends UGen {
             }
         }
 
-        // Pad the rest of the spectral array with zeros if needed
         for (int i = peakCount; i < numPeaks; i++) {
             spectral[i * 2] = Atom.newAtom(0.0f);
             spectral[i * 2 + 1] = Atom.newAtom(0.0f);
@@ -109,7 +108,7 @@ public class MumeAnalyzer extends UGen {
     }
 
     private List<FrequencyBin> getSortedBins() {
-        List<FrequencyBin> bins = new ArrayList<>(histogram.values());
+        List<FrequencyBin> bins = getAllBins();
         bins.sort((a, b) -> Float.compare(b.getWeight(), a.getWeight()));
         return bins;
     }

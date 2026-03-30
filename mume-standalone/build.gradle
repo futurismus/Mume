@@ -11,11 +11,17 @@ repositories {
 dependencies {
     implementation project(':mume-core')
     
-    // Beads Library from Clojars
+    // Beads Library
     implementation 'net.beadsproject:beads:3.2'
     
-    // Core project libs (for Atom compatibility)
-    implementation fileTree(dir: '../libs', include: ['*.jar'])
+    // Using names defined by the flatDir in root build.gradle
+    implementation name: 'jmsl'
+    implementation name: 'jscore'
+    implementation name: 'maxscore'
+    implementation name: 'max'
+    implementation name: 'NN'
+    implementation name: 'jsyn-17.1.0'
+    implementation name: 'punosmusic'
 }
 
 // Jar packaging for standalone app

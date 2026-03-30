@@ -15,5 +15,9 @@ subprojects {
 
     repositories {
         mavenCentral()
+        // Rename the target folder to 'libraries' to avoid potential exclusions
+        flatDir {
+            dirs "${rootDir}/libraries"
+        }
     }
 }

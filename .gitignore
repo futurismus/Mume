@@ -7,6 +7,15 @@ out/
 build/
 .gradle/
 
+# Allow max.jar specifically in the libraries folder
+!libraries/max.jar
+
+# Ignore all other contents of the libraries folder
+libraries/*
+
+# Ignore the supp-docs folder in mume-standalone
+mume-standalone/supp-docs/
+
 # IDE Specific
 .idea/
 *.iml
