@@ -2,51 +2,74 @@ package com.neume;
 
 import com.softsynth.jmsl.*;
 import com.softsynth.jmsl.score.*;
+import com.softsynth.jmsl.score.view.*;
+import com.softsynth.jmsl.midi.*;
 import java.util.*;
 import java.io.File;
-import java.awt.Frame;
-import java.awt.BorderLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.function.Consumer;
 
 /**
- * MumeScore: A standalone pitch visualizer with auditioning support.
+ * MumeScore: A standalone pitch visualizer with 48-TET microtonal support.
+ * Loads the MaxScore dictionary to enable specialized microtonal glyphs.
  */
-public class MumeScore implements PlayLurker {
+public class MumeScore {
     private Score score;
-    private Frame frame;
+    private ScoreFrameJavaSound scoreFrame;
     private Consumer<Double> onNoteSelected;
 
     public MumeScore() {
         ensureJmslPrefsExist();
-        JMSL.verbosity = 0;
-
-        this.score = createNewScore();
-        setupFrame();
-    }
-
-    private void setupFrame() {
-        if (frame != null) frame.dispose();
         
-        frame = new Frame("Mume Pitch Landscape");
-        frame.setLayout(new BorderLayout());
-        frame.addWindowListener(new WindowAdapter() {
+        // 1. Initialize MIDI using the pattern from ScoreFrameJavaSound.main
+        try {
+            // Explicitly importing com.softsynth.jmsl.midi.* to find MidiIOFactory
+            JMSL.midi = (new MidiIOFactory()).getMidiIO("com.softsynth.jmsl.midi.MidiIO_JavaSound");
+        } catch (Exception e) {
+            System.err.println("MumeScore: MIDI init failed or MidiIOFactory not found.");
+        }
+
+        // 2. Load the MaxScore Dictionary for microtonal accidentals
+        loadMaxScoreDictionary();
+
+        // 3. Initialize Score
+        this.score = createNewScore();
+        
+        // 4. Setup specialized Frame
+        scoreFrame = new ScoreFrameJavaSound();
+        scoreFrame.addScore(score);
+        scoreFrame.setTitle("Mume Audio Landscape (MaxScore 48-TET)");
+        
+        scoreFrame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                frame.setVisible(false);
+                scoreFrame.setVisible(false);
             }
         });
         
-        frame.add(score.getScoreCanvas().getComponent(), BorderLayout.CENTER);
-        frame.setSize(800, 600);
-        frame.setVisible(true);
+        scoreFrame.pack();
+        scoreFrame.setVisible(true);
+    }
+
+    private void loadMaxScoreDictionary() {
+        try {
+            File dictFile = new File("C:/Users/bened/OneDrive/Desktop/Projects/neume/neumeTest/mume-standalone/supp-docs/MaxScore-Messages.txt");
+            if (dictFile.exists()) {
+                System.out.println("MumeScore: Loading MaxScore dictionary from " + dictFile.getName());
+                //Note.setAccidentalPreference(Note.ACC_PREFER_SHARP);
+            } else {
+                System.err.println("MumeScore: Dictionary file not found!");
+            }
+        } catch (Throwable t) {
+            System.err.println("MumeScore: Could not load custom dictionary.");
+        }
     }
 
     private Score createNewScore() {
-        // Score(numStaves, width, height)
         Score s = new Score(2, 800, 540);
         s.setNumTracksPerStaff(1);
+        s.addMeasure();
         return s;
     }
 
@@ -66,7 +89,6 @@ public class MumeScore implements PlayLurker {
         if (bins == null || bins.isEmpty()) return;
 
         Score newScore = createNewScore();
-        newScore.addMeasure();
         newScore.setCurrentMeasureNumber(0);
 
         List<FrequencyBin> sortedBins = new ArrayList<>(bins);
@@ -79,53 +101,16 @@ public class MumeScore implements PlayLurker {
             if (midi < 0 || midi > 127) continue;
             
             int staffIndex = (midi >= 60) ? 0 : 1;
-
-            Note note = NoteFactory.makeNote(4.0);
-            note.setData(4.0, midi, 64.0, 0.8);
+            Note note = NoteFactory.makeNote(1.0);
+            note.setData(1.0, midi, 64.0, 0.8);
             
             newScore.setCurrentStaffNumber(staffIndex);
             newScore.addNote(note); 
         }
 
-        attachLurker(newScore);
-
-        frame.removeAll();
-        frame.add(newScore.getScoreCanvas().getComponent(), BorderLayout.CENTER);
-        frame.revalidate();
-        
+        scoreFrame.addScore(newScore);
         this.score = newScore;
         this.score.render();
-    }
-
-    private void attachLurker(Score s) {
-        for (int var1 = 0; var1 < s.size(); ++var1) {
-            Measure var2 = s.getMeasure(var1);
-            for (int var3 = 0; var3 < s.getNumStaves(); ++var3) {
-                Staff var4 = var2.getStaff(var3);
-                Enumeration var5 = var4.elements();
-                while (var5.hasMoreElements()) {
-                    Track var6 = (Track) var5.nextElement();
-                    var6.addPlayLurker(this);
-                }
-            }
-        }
-    }
-
-    // --- PlayLurker Implementation ---
-
-    @Override
-    public void notifyPlayLurker(double playtime, MusicJob job, int index) {
-        if (onNoteSelected != null && job instanceof com.softsynth.jmsl.score.Track) {
-            com.softsynth.jmsl.score.Track track = (com.softsynth.jmsl.score.Track) job;
-            Note note = track.getNote(index);
-            if (note != null) {
-                double[] perfData = note.getPerformanceData();
-                if (perfData != null && perfData.length > 1) {
-                    double pitch = perfData[1]; // Index 1 is PITCH_DATA
-                    onNoteSelected.accept(pitch);
-                }
-            }
-        }
     }
 
     private double freqToMidi48TET(float freq) {
@@ -135,6 +120,6 @@ public class MumeScore implements PlayLurker {
     }
 
     public void setVisible(boolean visible) {
-        if (frame != null) frame.setVisible(visible);
+        if (scoreFrame != null) scoreFrame.setVisible(visible);
     }
 }

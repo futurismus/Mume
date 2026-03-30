@@ -3,15 +3,13 @@ package com.neume;
 import net.beadsproject.beads.core.AudioContext;
 import net.beadsproject.beads.data.Buffer;
 import net.beadsproject.beads.ugens.*;
-import net.beadsproject.beads.analysis.featureextractors.PeakDetector;
 import net.beadsproject.beads.core.io.JavaSoundAudioIO;
 
 import javax.swing.*;
 import java.awt.*;
 
 /**
- * MumeUI: The graphical interface for the standalone Mume port.
- * Includes interactive auditioning and visual audio metering.
+ * MumeUI: Optimized for performance with larger buffer size and improved metering.
  */
 public class MumeUI extends JFrame {
     private AudioContext ac;
@@ -20,23 +18,22 @@ public class MumeUI extends JFrame {
     private MumeVisualizer visualizer;
     private MumeScore mumeScore;
     
-    // Auditioning Synth
     private WavePlayer auditionOsc;
     private Glide auditionFreq;
     private Envelope auditionEnv;
     private Gain auditionGain;
     
-    // Metering
     private AudioLevelMeter outputMeter;
     private RMS rms;
+    private Gain masterGain;
     private javax.swing.Timer meterTimer;
     
-    // UI Elements
     private final JTextArea statusArea;
     private final JButton btnStartStop;
     private final JButton btnCommit;
     private final JButton btnClear;
     private final JButton btnShowScore;
+    private final JSlider sliderMasterGain;
     private final JTextField txtMumeID;
     private final JSlider sliderRes;
     private final JSlider sliderAmpRes;
@@ -45,26 +42,31 @@ public class MumeUI extends JFrame {
         super("Mume Standalone");
         setLayout(new BorderLayout());
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(600, 800);
+        setSize(750, 850);
 
-        // Initialize Score Window
         mumeScore = new MumeScore();
         mumeScore.setOnNoteSelected(this::playAuditionPitch);
         mumeScore.setVisible(false);
 
-        // --- 1. Visualizer Panel ---
         visualizer = new MumeVisualizer(null);
         add(visualizer, BorderLayout.NORTH);
 
-        // --- 2. Main Center Panel ---
         JPanel pnlCenter = new JPanel(new BorderLayout());
         
-        // Metering on the side
+        JPanel pnlOutput = new JPanel(new BorderLayout());
+        pnlOutput.setBorder(BorderFactory.createTitledBorder("Output"));
         outputMeter = new AudioLevelMeter();
-        pnlCenter.add(outputMeter, BorderLayout.EAST);
+        pnlOutput.add(outputMeter, BorderLayout.CENTER);
+        
+        sliderMasterGain = new JSlider(JSlider.VERTICAL, 0, 100, 70);
+        sliderMasterGain.addChangeListener(e -> {
+            float val = sliderMasterGain.getValue() / 100.0f;
+            if (masterGain != null) masterGain.setGain(val);
+        });
+        pnlOutput.add(sliderMasterGain, BorderLayout.EAST);
+        pnlCenter.add(pnlOutput, BorderLayout.EAST);
 
-        // Curation Controls
-        JPanel pnlCuration = new JPanel(new GridLayout(10, 1, 5, 2));
+        JPanel pnlCuration = new JPanel(new GridLayout(11, 1, 5, 2));
         pnlCuration.setBorder(BorderFactory.createTitledBorder("Mume Curation"));
         
         txtMumeID = new JTextField("beads-mume-01");
@@ -104,6 +106,10 @@ public class MumeUI extends JFrame {
         btnShowScore.addActionListener(e -> mumeScore.setVisible(true));
         pnlCuration.add(btnShowScore);
 
+        JButton btnTestTone = new JButton("Test Tone (440Hz)");
+        btnTestTone.addActionListener(e -> playAuditionPitch(69.0));
+        pnlCuration.add(btnTestTone);
+
         btnStartStop = new JButton("Start Audio Context");
         btnStartStop.addActionListener(e -> toggleAudio());
         pnlCuration.add(btnStartStop);
@@ -111,15 +117,12 @@ public class MumeUI extends JFrame {
         pnlCenter.add(pnlCuration, BorderLayout.CENTER);
         add(pnlCenter, BorderLayout.CENTER);
 
-        // --- 3. Status Area ---
         statusArea = new JTextArea(8, 40);
         statusArea.setEditable(false);
         statusArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         add(new JScrollPane(statusArea), BorderLayout.SOUTH);
 
-        // Timer for the meter (~30 FPS)
         meterTimer = new javax.swing.Timer(33, e -> updateMeter());
-        
         setVisible(true);
     }
 
@@ -142,7 +145,8 @@ public class MumeUI extends JFrame {
 
     private void startAudio() {
         JavaSoundAudioIO io = new JavaSoundAudioIO();
-        ac = new AudioContext(io);
+        // Increase buffer size to 2048 to prevent crackling during FFT analysis
+        ac = new AudioContext(io, 2048);
         
         analyzer = new MumeAnalyzer(ac, 1024);
         ac.out.addDependent(analyzer);
@@ -152,25 +156,22 @@ public class MumeUI extends JFrame {
         inputGain.addInput(ac.getAudioInput());
         analyzer.addInput(inputGain);
         
-        // Setup Auditioning Synth
         auditionFreq = new Glide(ac, 440.0f, 20.0f);
         auditionOsc = new WavePlayer(ac, auditionFreq, Buffer.SINE);
         auditionEnv = new Envelope(ac, 0.0f);
         auditionGain = new Gain(ac, 1, auditionEnv);
         auditionGain.addInput(auditionOsc);
         
-        // Master Output
-        Gain masterGain = new Gain(ac, 1, 0.5f);
+        masterGain = new Gain(ac, 1, sliderMasterGain.getValue() / 100.0f);
         masterGain.addInput(auditionGain);
         ac.out.addInput(masterGain);
         
-        // Output Metering (RMS analysis)
-        rms = new RMS(ac, 1);
-        rms.addInput(ac.out);
+        rms = new RMS(ac, 1, 100);
+        rms.addInput(masterGain);
         ac.out.addDependent(rms);
         
         ac.start();
-        log("AudioContext started. Ready to audition.");
+        log("AudioContext started (Buffer: 2048).");
     }
 
     private void stopAudio() {
@@ -184,24 +185,19 @@ public class MumeUI extends JFrame {
 
     private void updateMeter() {
         if (rms != null) {
-            // Get RMS level and scale for visibility
-            float val = rms.getValue();
-            outputMeter.setLevel(val * 2.0f); // Scale up for visual feedback
+            float val = rms.getOutBuffer(0)[0];
+            outputMeter.setLevel(val * 5.0f);
         }
     }
 
     private void playAuditionPitch(double midiPitch) {
         if (ac == null) return;
-        
         float freq = (float) (440.0 * Math.pow(2.0, (midiPitch - 69.0) / 12.0));
         auditionFreq.setValue(freq);
-        
-        // 500ms blip
-        auditionEnv.addSegment(0.5f, 50);  // Attack
-        auditionEnv.addSegment(0.5f, 400); // Sustain
-        auditionEnv.addSegment(0.0f, 50);  // Release
-        
-        log("Auditioning MIDI: " + String.format("%.2f", midiPitch));
+        auditionEnv.addSegment(0.5f, 50);
+        auditionEnv.addSegment(0.5f, 400);
+        auditionEnv.addSegment(0.0f, 50);
+        // log("Auditioning: " + String.format("%.1f", freq) + " Hz");
     }
 
     private void commitMume() {
