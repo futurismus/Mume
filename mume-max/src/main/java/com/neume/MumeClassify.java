@@ -5,9 +5,10 @@ import java.util.*;
 
 /**
  * MumeClassify: A simple Nearest-Neighbor classifier for spectral vectors.
+ * Now offloads distance calculation logic to the core MumeData object.
  */
 public class MumeClassify extends MaxObject {
-    private List<MumeData> models = new ArrayList<>();
+    private final List<MumeData> models = new ArrayList<>();
     private float freqScale = 1000.0f;
 
     public MumeClassify() {
@@ -22,7 +23,7 @@ public class MumeClassify extends MaxObject {
     }
 
     public void train(Atom[] list) {
-        if (list.length < 6) {
+        if (list.length < 2) {
             error("MumeClassify: Training list too short.");
             return;
         }
@@ -36,21 +37,31 @@ public class MumeClassify extends MaxObject {
             error("MumeClassify: No trained models available.");
             return;
         }
-        float[] liveVector = Atom.toFloat(list);
+
+        // Convert the incoming live vector (list of freq, amp pairs) 
+        // into a temporary MumeData for comparison
+        MumeData live = new MumeData(0, "live", 0, 0, 0, 0, list);
+        
         MumeData bestMatch = null;
         float minDistance = Float.MAX_VALUE;
         Atom[] landscape = new Atom[(models.size() * 2) + 1];
         landscape[0] = Atom.newAtom("landscape");
+
         for (int i = 0; i < models.size(); i++) {
             MumeData model = models.get(i);
-            float dist = calculateDistance(liveVector, Atom.toFloat(model.spectralData));
+            
+            // Use the CORE similarity logic
+            float dist = live.distanceTo(model, freqScale);
+            
             landscape[i * 2 + 1] = Atom.newAtom(model.id);
             landscape[i * 2 + 2] = Atom.newAtom(dist);
+            
             if (dist < minDistance) {
                 minDistance = dist;
                 bestMatch = model;
             }
         }
+        
         if (bestMatch != null) outputMatch(bestMatch, minDistance, landscape);
     }
 
@@ -69,19 +80,7 @@ public class MumeClassify extends MaxObject {
                 return;
             }
         }
-        error("MumeClassify: ID '" + id + "' not found in classifier memory.");
-    }
-
-    private float calculateDistance(float[] v1, float[] v2) {
-        float sum = 0;
-        int len = Math.min(v1.length, v2.length);
-        if (len % 2 != 0) len--; 
-        for (int i = 0; i < len; i += 2) {
-            float dFreq = (v1[i] - v2[i]) / Math.max(1.0f, freqScale);
-            float dAmp = (v1[i+1] - v2[i+1]);
-            sum += (dFreq * dFreq) + (dAmp * dAmp);
-        }
-        return (float) Math.sqrt(sum);
+        error("MumeClassify: ID '" + id + "' not found.");
     }
 
     public void clear() {
