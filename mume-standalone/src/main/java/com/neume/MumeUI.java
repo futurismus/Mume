@@ -9,9 +9,11 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
 
 /**
  * MumeUI: Refactored to follow a sequential "Capture -> Process" workflow.
+ * Integrated with MumePlex for corpus generation and training data export.
  */
 public class MumeUI extends JFrame {
     private AudioContext ac;
@@ -19,6 +21,7 @@ public class MumeUI extends JFrame {
     private Gain inputGain;
     private MumeVisualizer visualizer;
     private MumeScore mumeScore;
+    private final MumePlex corpus = new MumePlex();
     
     private WavePlayer auditionOsc;
     private Glide auditionFreq;
@@ -42,18 +45,20 @@ public class MumeUI extends JFrame {
     private final JButton btnShowScore;
     private final JButton btnQuit;
     private final JButton btnAnalyze;
+    private final JButton btnSaveCorpus;
     private final JSlider sliderMasterGain;
     private final JTextField txtMumeID;
     private final JSlider sliderRes;
     private final JSlider sliderAmpRes;
 
     private volatile boolean keepRunning = true;
+    private int currentMumeIndex = 1;
     
     public MumeUI() {
         super("Mume Standalone");
         setLayout(new BorderLayout());
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(750, 950);
+        setSize(750, 1000); // Increased height
 
         mumeScore = new MumeScore();
         mumeScore.setOnNoteSelected(this::playAuditionPitch);
@@ -77,7 +82,8 @@ public class MumeUI extends JFrame {
         pnlOutput.add(sliderMasterGain, BorderLayout.EAST);
         pnlCenter.add(pnlOutput, BorderLayout.EAST);
 
-        JPanel pnlCuration = new JPanel(new GridLayout(14, 1, 5, 2));
+        // Increased grid rows to 15
+        JPanel pnlCuration = new JPanel(new GridLayout(15, 1, 5, 2));
         pnlCuration.setBorder(BorderFactory.createTitledBorder("Mume Curation"));
         
         txtMumeID = new JTextField("beads-mume-01");
@@ -109,12 +115,8 @@ public class MumeUI extends JFrame {
                 if (ac != null && analyzer != null && btnAnalyze.isEnabled()) {
                     analyzer.resetCapture(); 
                     ac.out.addDependent(analyzer); 
-                    
-                    if (inputGain != null) {
-                        analyzer.addInput(inputGain);
-                    } else {
-                        analyzer.addInput(masterGain); 
-                    }
+                    if (inputGain != null) analyzer.addInput(inputGain);
+                    else analyzer.addInput(masterGain); 
 
                     btnAnalyze.setText("CAPTURING...");
                     btnAnalyze.setBackground(Color.RED);
@@ -126,10 +128,8 @@ public class MumeUI extends JFrame {
                 if (ac != null && analyzer != null) {
                     ac.out.removeDependent(analyzer); 
                     analyzer.clearInputConnections(); 
-                    
                     btnAnalyze.setText("PROCESSING...");
                     btnAnalyze.setBackground(Color.ORANGE);
-                    
                     new Thread(() -> {
                         analyzer.processCapturedData();
                         SwingUtilities.invokeLater(() -> {
@@ -143,7 +143,7 @@ public class MumeUI extends JFrame {
         });
         pnlCuration.add(btnAnalyze);
 
-        btnCommit = new JButton("Commit Current Spectral State");
+        btnCommit = new JButton("Commit Mume to Corpus");
         btnCommit.setEnabled(false);
         btnCommit.addActionListener(e -> commitMume());
         pnlCuration.add(btnCommit);
@@ -164,6 +164,11 @@ public class MumeUI extends JFrame {
         btnShowScore = new JButton("Show Pitch Landscape");
         btnShowScore.addActionListener(e -> mumeScore.setVisible(true));
         pnlCuration.add(btnShowScore);
+
+        btnSaveCorpus = new JButton("Save Corpus to Dataset (.csv)");
+        btnSaveCorpus.setBackground(new Color(200, 200, 255));
+        btnSaveCorpus.addActionListener(e -> saveCorpus());
+        pnlCuration.add(btnSaveCorpus);
 
         JButton btnTestTone = new JButton("Test Tone (440Hz)");
         btnTestTone.addActionListener(e -> playAuditionPitch(69.0));
@@ -229,7 +234,6 @@ public class MumeUI extends JFrame {
             btnAnalyze.setEnabled(false);
             meterTimer.stop();
             outputMeter.setLevel(0);
-            
             try { Thread.sleep(200); } catch (Exception ex) {}
         }
     }
@@ -237,30 +241,24 @@ public class MumeUI extends JFrame {
     private void startAudio() {
         JavaSoundAudioIO io = new JavaSoundAudioIO();
         ac = new AudioContext(io, 1024);
-        
         analyzer = new MumeAnalyzer(ac, 1024);
-        
         auditionFreq = new Glide(ac, 440.0f, 20.0f);
         auditionOsc = new WavePlayer(ac, auditionFreq, Buffer.SINE);
         auditionEnv = new Envelope(ac, 0.0f);
         auditionGain = new Gain(ac, 1, auditionEnv);
         auditionGain.addInput(auditionOsc);
-
         resynthOscBank = new OscillatorBank(ac, Buffer.SINE, 24);
         resynthEnv = new Envelope(ac, 0.0f);
         resynthGain = new Gain(ac, 1, resynthEnv);
         resynthGain.addInput(resynthOscBank);
-        
         float initialGain = (sliderMasterGain.getValue() / 100.0f) * 0.5f;
         masterGain = new Gain(ac, 1, initialGain);
         masterGain.addInput(auditionGain);
         masterGain.addInput(resynthGain);
         ac.out.addInput(masterGain);
-        
         rms = new RMS(ac, 1, 100);
         rms.addInput(masterGain);
         ac.out.addDependent(rms);
-        
         try {
             inputGain = new Gain(ac, 1, 0.2f); 
             inputGain.addInput(ac.getAudioInput());
@@ -269,7 +267,6 @@ public class MumeUI extends JFrame {
             inputGain = null; 
             log("WARNING: Mic busy. Internal analysis mode active.");
         }
-        
         visualizer.setAnalyzer(analyzer);
         ac.start();
         log("AudioContext started.");
@@ -278,17 +275,12 @@ public class MumeUI extends JFrame {
     private void stopAudio() {
         if (ac != null) {
             ac.stop();
-            // Disconnect inputs from the master output gain
-            if (ac.out != null) {
-                ac.out.clearInputConnections();
-            }
+            if (ac.out != null) ac.out.clearInputConnections();
             ac = null;
-            
             analyzer = null;
             inputGain = null;
             rms = null;
             masterGain = null;
-            
             log("AudioContext stopped.");
         }
     }
@@ -298,9 +290,7 @@ public class MumeUI extends JFrame {
             try {
                 float val = rms.getOutBuffer(0)[0];
                 outputMeter.setLevel(val * 5.0f);
-            } catch (Exception e) {
-                // Ignore transient errors during stop
-            }
+            } catch (Exception e) { }
         }
     }
 
@@ -315,7 +305,7 @@ public class MumeUI extends JFrame {
 
     private void resynthesize() {
         if (analyzer != null && resynthOscBank != null) {
-            MumeData currentMume = analyzer.getMume(0, txtMumeID.getText(), 0.1f);
+            MumeData currentMume = analyzer.getMume(currentMumeIndex, txtMumeID.getText(), 0.1f);
             float[] frequencies = new float[currentMume.spectralData.length / 2];
             float[] gains = new float[currentMume.spectralData.length / 2];
             for (int i = 0; i < frequencies.length; i++) {
@@ -333,9 +323,31 @@ public class MumeUI extends JFrame {
 
     private void commitMume() {
         if (analyzer != null) {
-            MumeData currentMume = analyzer.getMume(0, txtMumeID.getText(), 0.1f);
-            log("COMMITTED: " + currentMume.id + " (Mass: " + String.format("%.2f", currentMume.weight) + ")");
+            MumeData currentMume = analyzer.getMume(currentMumeIndex, txtMumeID.getText(), 0.1f);
+            corpus.add(currentMume);
+            log("COMMITTED to Corpus: " + currentMume.id + " [Index: " + currentMumeIndex + "]");
             mumeScore.updatePitches(analyzer.getAllBins());
+            currentMumeIndex++;
+            txtMumeID.setText("beads-mume-" + String.format("%02d", currentMumeIndex));
+        }
+    }
+
+    private void saveCorpus() {
+        if (corpus.size() == 0) {
+            log("ERROR: Corpus is empty. Nothing to save.");
+            return;
+        }
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Save Mume Corpus");
+        fileChooser.setSelectedFile(new File("mume_dataset.csv"));
+        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try {
+                String path = fileChooser.getSelectedFile().getAbsolutePath();
+                corpus.saveToDataset(path);
+                log("SUCCESS: Corpus saved to " + path + " (" + corpus.size() + " Mumes)");
+            } catch (Exception ex) {
+                log("ERROR saving corpus: " + ex.getMessage());
+            }
         }
     }
 

@@ -5,7 +5,6 @@ import java.util.*;
 
 /**
  * Mume: A spectral analysis and storage object for Max.
- * Analogy: A "neumonic" unit of spectral information.
  */
 public class Mume extends MaxObject {
     
